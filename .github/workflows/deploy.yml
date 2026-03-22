@@ -122,12 +122,8 @@ jobs:
             
             # Update function code
             dotnet lambda deploy-function \
-              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              ${{ env.LAMBDA_FUNCTION_NAME }} \
               --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
-              --function-runtime dotnet10 \
-              --function-memory-size 512 \
-              --function-timeout 30 \
-              --function-architecture x86_64 \
               --region ${{ vars.AWS_DEFAULT_REGION }} \
               --disable-interactive true
             
@@ -137,12 +133,8 @@ jobs:
             
             # Create new function
             dotnet lambda deploy-function \
-              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              ${{ env.LAMBDA_FUNCTION_NAME }} \
               --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
-              --function-runtime dotnet10 \
-              --function-memory-size 512 \
-              --function-timeout 30 \
-              --function-architecture x86_64 \
               --region ${{ vars.AWS_DEFAULT_REGION }} \
               --disable-interactive true
             
