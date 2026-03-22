@@ -1,0 +1,206 @@
+name: Deploy - Lambda Function
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "hml"
+        type: choice
+        options:
+          - hml
+          - prd
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: "Deploy - Lambda Function"
+    runs-on: ubuntu-latest
+    environment: aws
+    env:
+      ENVIRONMENT: ${{ inputs.environment || vars.environment }}
+      LAMBDA_FUNCTION_NAME: mechermes-${{ inputs.environment }}-cognito-token-lambda
+
+    defaults:
+      run:
+        working-directory: ./CognitoTokenLambda
+        shell: bash
+
+    steps:
+      # Checkout the repository to the GitHub Actions runner
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Setup .NET 10
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Install Lambda deployment tools
+      - name: Install Amazon Lambda Tools
+        run: dotnet tool install -g Amazon.Lambda.Tools
+
+      # Configure AWS Credentials for AWS CLI and other AWS SDKs and tools
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      # Discover infrastructure values from AWS
+      - name: Discover AWS Infrastructure Values
+        id: discover
+        run: |
+          echo "Discovering RDS endpoint for environment: ${{ inputs.environment }}"
+          RDS_ENDPOINT=$(aws rds describe-db-instances \
+            --db-instance-identifier mechermes-${{ inputs.environment }}-rds \
+            --query "DBInstances[0].Endpoint.Address" \
+            --output text)
+          echo "RDS_ENDPOINT=$RDS_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "✓ RDS Endpoint discovered: $RDS_ENDPOINT"
+          
+          echo "Discovering RDS port"
+          RDS_PORT=$(aws rds describe-db-instances \
+            --db-instance-identifier mechermes-${{ inputs.environment }}-rds \
+            --query "DBInstances[0].Endpoint.Port" \
+            --output text)
+          echo "RDS_PORT=$RDS_PORT" >> $GITHUB_OUTPUT
+          echo "✓ RDS Port discovered: $RDS_PORT"
+          
+          echo "Discovering Lambda security group"
+          LAMBDA_SG=$(aws ec2 describe-security-groups \
+            --filters "Name=group-name,Values=mechermes-lambda-sg" \
+            --query "SecurityGroups[0].GroupId" \
+            --output text)
+          echo "LAMBDA_SG=$LAMBDA_SG" >> $GITHUB_OUTPUT
+          echo "✓ Lambda Security Group discovered: $LAMBDA_SG"
+          
+          echo "Discovering VPC private subnets"
+          SUBNET_IDS=$(aws ec2 describe-subnets \
+            --filters "Name=tag:Name,Values=mechermes-vpc-private-*" \
+            --query "Subnets[*].SubnetId" \
+            --output text | tr '\t' ',')
+          echo "SUBNET_IDS=$SUBNET_IDS" >> $GITHUB_OUTPUT
+          echo "✓ Private Subnets discovered: $SUBNET_IDS"
+
+      # Build and package Lambda function
+      - name: Build Lambda Package
+        run: |
+          echo "Building Lambda function for ${{ inputs.environment }} environment"
+          dotnet publish -c Release -r linux-x64 --self-contained false
+          echo "✓ Lambda package built successfully"
+
+      # Deploy Lambda function using AWS Lambda Tools
+      - name: Deploy Lambda Function
+        run: |
+          echo "Deploying Lambda function: ${{ env.LAMBDA_FUNCTION_NAME }}"
+          
+          # Check if function exists
+          if aws lambda get-function --function-name ${{ env.LAMBDA_FUNCTION_NAME }} 2>/dev/null; then
+            echo "Function exists, updating code and configuration..."
+            
+            # Update function code
+            dotnet lambda deploy-function \
+              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
+              --function-runtime dotnet10 \
+              --function-memory-size 512 \
+              --function-timeout 30 \
+              --function-architecture x86_64 \
+              --region ${{ vars.AWS_DEFAULT_REGION }} \
+              --disable-interactive true
+            
+            echo "✓ Lambda function code updated"
+          else
+            echo "Function does not exist, creating new function..."
+            
+            # Create new function
+            dotnet lambda deploy-function \
+              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
+              --function-runtime dotnet10 \
+              --function-memory-size 512 \
+              --function-timeout 30 \
+              --function-architecture x86_64 \
+              --region ${{ vars.AWS_DEFAULT_REGION }} \
+              --disable-interactive true
+            
+            echo "✓ Lambda function created"
+          fi
+
+      # Update Lambda environment variables with discovered values
+      - name: Update Lambda Environment Variables
+        run: |
+          echo "Updating Lambda environment variables for ${{ env.LAMBDA_FUNCTION_NAME }}"
+          
+          aws lambda update-function-configuration \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --environment "Variables={
+              RDS__Host=${{ steps.discover.outputs.RDS_ENDPOINT }},
+              RDS__Port=${{ steps.discover.outputs.RDS_PORT }},
+              RDS__Database=${{ vars.RDS_DATABASE_NAME }},
+              RDS__Username=${{ vars.RDS_LAMBDA_USERNAME }},
+              COGNITO_SECRET_ID=${{ vars.COGNITO_SECRET_ID }},
+              EmailSender__Enabled=${{ vars.EMAIL_SENDER_ENABLED }},
+              EmailSender__SmtpServer=${{ vars.EMAIL_SMTP_SERVER }},
+              EmailSender__SmtpPort=${{ vars.EMAIL_SMTP_PORT }},
+              EmailSender__SslRequired=${{ vars.EMAIL_SSL_REQUIRED }},
+              EmailSender__UserName=${{ secrets.EMAIL_USERNAME }},
+              EmailSender__Password=${{ secrets.EMAIL_PASSWORD }},
+              EmailSender__SenderInformation__Name=${{ vars.EMAIL_SENDER_NAME }},
+              EmailSender__SenderInformation__Address=${{ vars.EMAIL_SENDER_ADDRESS }}
+            }" \
+            --region ${{ vars.AWS_DEFAULT_REGION }}
+          
+          echo "✓ Environment variables updated successfully"
+
+      # Configure Lambda VPC settings
+      - name: Configure Lambda VPC
+        run: |
+          echo "Configuring Lambda VPC settings for RDS access"
+          
+          aws lambda update-function-configuration \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --vpc-config "SubnetIds=${{ steps.discover.outputs.SUBNET_IDS }},SecurityGroupIds=${{ steps.discover.outputs.LAMBDA_SG }}" \
+            --region ${{ vars.AWS_DEFAULT_REGION }}
+          
+          echo "✓ Lambda VPC configuration updated"
+          echo "  - Security Group: ${{ steps.discover.outputs.LAMBDA_SG }}"
+          echo "  - Subnets: ${{ steps.discover.outputs.SUBNET_IDS }}"
+          
+          # Wait for VPC configuration to be applied
+          echo "Waiting for VPC configuration to be applied..."
+          aws lambda wait function-updated \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --region ${{ vars.AWS_DEFAULT_REGION }}
+          echo "✓ VPC configuration applied successfully"
+
+      # Verify deployment
+      - name: Verify Deployment
+        run: |
+          echo "Verifying Lambda deployment..."
+          
+          FUNCTION_INFO=$(aws lambda get-function \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --region ${{ vars.AWS_DEFAULT_REGION }})
+          
+          echo "✓ Lambda Function Details:"
+          echo "$FUNCTION_INFO" | jq -r '.Configuration | {
+            FunctionName,
+            Runtime,
+            MemorySize,
+            Timeout,
+            LastModified,
+            State,
+            Version
+          }'
+          
+          echo ""
+          echo "✓ Lambda function deployed and verified successfully"
+          echo "Function ARN: $(echo "$FUNCTION_INFO" | jq -r '.Configuration.FunctionArn')"
