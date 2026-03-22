@@ -123,7 +123,7 @@ jobs:
             # Update function code
             dotnet lambda deploy-function ${{ env.LAMBDA_FUNCTION_NAME }} \
               --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
-              --disable-interactive
+              --disable-interactive true
             
             echo "✓ Lambda function code updated"
           else
@@ -132,7 +132,7 @@ jobs:
             # Create new function
             dotnet lambda deploy-function ${{ env.LAMBDA_FUNCTION_NAME }} \
               --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
-              --disable-interactive
+              --disable-interactive true
             
             echo "✓ Lambda function created"
           fi

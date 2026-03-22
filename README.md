@@ -329,6 +329,57 @@ A instância RDS deve ter **IAM Database Authentication** habilitado.
 
 ## Deploy
 
+### GitHub Actions (Recomendado)
+
+O projeto possui um workflow automatizado em `.github/workflows/deploy.yml` que realiza o deploy via GitHub Actions.
+
+#### Variáveis de Repositório Necessárias
+
+Configure as seguintes variáveis em **Settings → Secrets and variables → Actions → Variables**:
+
+| Variável | Descrição | Exemplo |
+|----------|-----------|---------|
+| `AWS_DEFAULT_REGION` | Região AWS | `us-east-1` |
+| `LAMBDA_EXECUTION_ROLE_ARN` | ARN da IAM Role para execução da Lambda | `arn:aws:iam::${aws_account_id}:role/LabRole` |
+| `RDS_DATABASE_NAME` | Nome do banco de dados | `mechermesdb` |
+| `RDS_LAMBDA_USERNAME` | Usuário IAM do RDS | `lambda_user` |
+| `EMAIL_SENDER_ENABLED` | Habilita envio de e-mail | `true` |
+| `EMAIL_SMTP_SERVER` | Servidor SMTP | `smtp.gmail.com` |
+| `EMAIL_SMTP_PORT` | Porta SMTP | `587` |
+| `EMAIL_SSL_REQUIRED` | SSL obrigatório | `true` |
+| `EMAIL_SENDER_NAME` | Nome do remetente | `Mecânica Hermes` |
+| `EMAIL_SENDER_ADDRESS` | E-mail do remetente | `no-reply@mecanicahermes.com` |
+
+#### Secrets de Repositório Necessários
+
+Configure os seguintes secrets em **Settings → Secrets and variables → Actions → Secrets**:
+
+| Secret | Descrição |
+|--------|-----------|
+| `AWS_ACCESS_KEY_ID` | AWS Access Key ID |
+| `AWS_SECRET_ACCESS_KEY` | AWS Secret Access Key |
+| `AWS_SESSION_TOKEN` | AWS Session Token (se usando credenciais temporárias) |
+| `EMAIL_USERNAME` | Usuário SMTP |
+| `EMAIL_PASSWORD` | Senha SMTP |
+
+#### Execução do Workflow
+
+1. Acesse **Actions** no repositório GitHub
+2. Selecione **Deploy - Lambda Function**
+3. Clique em **Run workflow**
+4. Escolha o ambiente (`hml` ou `prd`)
+5. Clique em **Run workflow**
+
+O workflow irá:
+
+- Descobrir automaticamente a infraestrutura AWS (RDS, VPC, Cognito)
+- Compilar e empacotar a função Lambda
+- Criar ou atualizar a função no AWS Lambda
+- Configurar variáveis de ambiente
+- Configurar VPC para acesso ao RDS
+
+### Deploy Manual (Local)
+
 Instalar o Amazon.Lambda.Tools se ainda não instalado:
 
 ```bash
@@ -339,7 +390,9 @@ Publicar a função:
 
 ```bash
 cd CognitoTokenLambda
-dotnet lambda deploy-function
+dotnet lambda deploy-function mechermes-{env}-cognito-token-lambda \
+  --function-role arn:aws:iam::<aws_account_id>:role/LabRole \
+  --disable-interactive true
 ```
 
 ### Configuração de Deploy (`aws-lambda-tools-defaults.json`)
