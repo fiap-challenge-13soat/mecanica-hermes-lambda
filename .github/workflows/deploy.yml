@@ -88,6 +88,21 @@ jobs:
             --output text | tr '\t' ',')
           echo "SUBNET_IDS=$SUBNET_IDS" >> $GITHUB_OUTPUT
           echo "✓ Private Subnets discovered: $SUBNET_IDS"
+          
+          echo "Discovering Cognito User Pool ID"
+          USER_POOL_ID=$(aws cognito-idp list-user-pools --max-results 60 \
+            --query "UserPools[?Name=='mechermes-${{ inputs.environment }}-userpool'].Id | [0]" \
+            --output text)
+          echo "USER_POOL_ID=$USER_POOL_ID" >> $GITHUB_OUTPUT
+          echo "✓ Cognito User Pool ID discovered: $USER_POOL_ID"
+          
+          echo "Discovering Cognito secret from Secrets Manager"
+          COGNITO_SECRET_ID=$(aws secretsmanager list-secrets \
+            --filters "Key=name,Values=mechermes-${{ inputs.environment }}-cognito-client-secret" \
+            --query "SecretList[0].Name" \
+            --output text)
+          echo "COGNITO_SECRET_ID=$COGNITO_SECRET_ID" >> $GITHUB_OUTPUT
+          echo "✓ Cognito Secret ID discovered: $COGNITO_SECRET_ID"
 
       # Build and package Lambda function
       - name: Build Lambda Package
@@ -146,7 +161,7 @@ jobs:
               RDS__Port=${{ steps.discover.outputs.RDS_PORT }},
               RDS__Database=${{ vars.RDS_DATABASE_NAME }},
               RDS__Username=${{ vars.RDS_LAMBDA_USERNAME }},
-              COGNITO_SECRET_ID=${{ vars.COGNITO_SECRET_ID }},
+              COGNITO_SECRET_ID=${{ steps.discover.outputs.COGNITO_SECRET_ID }},
               EmailSender__Enabled=${{ vars.EMAIL_SENDER_ENABLED }},
               EmailSender__SmtpServer=${{ vars.EMAIL_SMTP_SERVER }},
               EmailSender__SmtpPort=${{ vars.EMAIL_SMTP_PORT }},
