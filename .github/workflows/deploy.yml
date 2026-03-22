@@ -121,20 +121,18 @@ jobs:
             echo "Function exists, updating code and configuration..."
             
             # Update function code
-            dotnet lambda deploy-function \
+            dotnet lambda deploy-function ${{ env.LAMBDA_FUNCTION_NAME }} \
               --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
-              --disable-interactive true \
-              ${{ env.LAMBDA_FUNCTION_NAME }}
+              --disable-interactive true
             
             echo "✓ Lambda function code updated"
           else
             echo "Function does not exist, creating new function..."
             
             # Create new function
-            dotnet lambda deploy-function \
+            dotnet lambda deploy-function ${{ env.LAMBDA_FUNCTION_NAME }} \
               --function-role ${{ vars.LAMBDA_EXECUTION_ROLE_ARN }} \
-              --disable-interactive true \
-              ${{ env.LAMBDA_FUNCTION_NAME }}
+              --disable-interactive true
             
             echo "✓ Lambda function created"
           fi
