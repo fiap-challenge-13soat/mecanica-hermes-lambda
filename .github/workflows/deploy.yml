@@ -244,6 +244,14 @@ jobs:
             --region ${{ vars.AWS_DEFAULT_REGION }}
 
           echo "✓ Environment variables updated successfully"
+          
+          # Wait for the Lambda function to finish updating before proceeding
+          echo "Waiting for Lambda function update to complete..."
+          aws lambda wait function-updated \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --region ${{ vars.AWS_DEFAULT_REGION }}
+          
+          echo "✓ Lambda function update completed"
 
       # Configure Lambda VPC settings
       - name: Configure Lambda VPC

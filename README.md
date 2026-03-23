@@ -392,6 +392,28 @@ O workflow irá:
 - Configurar variáveis de ambiente
 - Configurar VPC para acesso ao RDS
 
+#### Destruir Recursos (Destroy)
+
+Para remover a função Lambda e recursos associados:
+
+1. Acesse **Actions** no repositório GitHub
+2. Selecione **Destroy - Lambda Function**
+3. Clique em **Run workflow**
+4. Escolha o ambiente (`hml` ou `prd`)
+5. Digite **`DESTROY`** no campo de confirmação
+6. Clique em **Run workflow**
+
+**Recursos que serão deletados:**
+
+- ✅ Lambda Function (`mechermes-{env}-cognito-token-lambda`)
+- ✅ Cognito Secret (`mechermes-{env}-cognito-client-secret`)
+
+**Recursos que NÃO serão deletados:**
+
+- ❌ RDS Database (gerenciado pela infraestrutura)
+- ❌ Cognito User Pool (gerenciado pela infraestrutura)
+- ❌ VPC, Subnets, Security Groups (gerenciados pela infraestrutura)
+
 ### Deploy Manual (Local)
 
 Instalar o Amazon.Lambda.Tools se ainda não instalado:
