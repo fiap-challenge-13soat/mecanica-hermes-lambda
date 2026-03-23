@@ -15,4 +15,7 @@ public class CognitoSettings
 
     [JsonPropertyName("scope")]
     public string Scope { get; set; } = default!;
+
+    [JsonPropertyName("db_password")]
+    public string DbPassword { get; set; } = default!;
 }
