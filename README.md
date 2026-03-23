@@ -341,14 +341,6 @@ Configure as seguintes variáveis em **Settings → Secrets and variables → Ac
 |----------|-----------|---------|
 | `AWS_DEFAULT_REGION` | Região AWS | `us-east-1` |
 | `LAMBDA_EXECUTION_ROLE_ARN` | ARN da IAM Role para execução da Lambda | `arn:aws:iam::${aws_account_id}:role/LabRole` |
-| `RDS_DATABASE_NAME` | Nome do banco de dados | `mechermesdb` |
-| `RDS_LAMBDA_USERNAME` | Usuário IAM do RDS | `lambda_user` |
-| `EMAIL_SENDER_ENABLED` | Habilita envio de e-mail | `true` |
-| `EMAIL_SMTP_SERVER` | Servidor SMTP | `smtp.gmail.com` |
-| `EMAIL_SMTP_PORT` | Porta SMTP | `587` |
-| `EMAIL_SSL_REQUIRED` | SSL obrigatório | `true` |
-| `EMAIL_SENDER_NAME` | Nome do remetente | `Mecânica Hermes` |
-| `EMAIL_SENDER_ADDRESS` | E-mail do remetente | `no-reply@mecanicahermes.com` |
 
 #### Secrets de Repositório Necessários
 
