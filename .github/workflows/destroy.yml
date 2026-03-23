@@ -1,0 +1,94 @@
+name: Destroy - Lambda Function
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment to destroy"
+        required: true
+        type: choice
+        options:
+          - hml
+          - prd
+      confirm_destroy:
+        description: "Type 'DESTROY' to confirm deletion"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    name: "Destroy - Lambda Function"
+    runs-on: ubuntu-latest
+    environment: aws
+    env:
+      LAMBDA_FUNCTION_NAME: mechermes-${{ inputs.environment }}-cognito-token-lambda
+      COGNITO_SECRET_NAME: mechermes-${{ inputs.environment }}-cognito-client-secret
+
+    steps:
+      - name: Validate Destroy Confirmation
+        run: |
+          if [ "${{ inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Destroy confirmation failed. You must type 'DESTROY' exactly."
+            exit 1
+          fi
+          echo "✓ Destroy confirmation validated"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: Delete Lambda Function
+        run: |
+          echo "Checking if Lambda function exists: ${{ env.LAMBDA_FUNCTION_NAME }}"
+          
+          if aws lambda get-function --function-name ${{ env.LAMBDA_FUNCTION_NAME }} 2>/dev/null; then
+            echo "Deleting Lambda function..."
+            aws lambda delete-function \
+              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              --region ${{ vars.AWS_DEFAULT_REGION }}
+            
+            echo "✓ Lambda function deleted: ${{ env.LAMBDA_FUNCTION_NAME }}"
+          else
+            echo "⚠ Lambda function does not exist: ${{ env.LAMBDA_FUNCTION_NAME }}"
+          fi
+
+      - name: Delete Cognito Secret
+        run: |
+          echo "Checking if Cognito secret exists: ${{ env.COGNITO_SECRET_NAME }}"
+          
+          if aws secretsmanager describe-secret --secret-id ${{ env.COGNITO_SECRET_NAME }} 2>/dev/null; then
+            echo "Deleting Cognito secret..."
+            aws secretsmanager delete-secret \
+              --secret-id ${{ env.COGNITO_SECRET_NAME }} \
+              --force-delete-without-recovery \
+              --region ${{ vars.AWS_DEFAULT_REGION }}
+            
+            echo "✓ Cognito secret deleted: ${{ env.COGNITO_SECRET_NAME }}"
+          else
+            echo "⚠ Cognito secret does not exist: ${{ env.COGNITO_SECRET_NAME }}"
+          fi
+
+      - name: Destroy Summary
+        run: |
+          echo "============================================"
+          echo "  DESTROY COMPLETED - ${{ inputs.environment }}"
+          echo "============================================"
+          echo ""
+          echo "Resources deleted:"
+          echo "  ✓ Lambda Function: ${{ env.LAMBDA_FUNCTION_NAME }}"
+          echo "  ✓ Cognito Secret: ${{ env.COGNITO_SECRET_NAME }}"
+          echo ""
+          echo "Note: The following resources were NOT deleted:"
+          echo "  - RDS Database (mechermes-${{ inputs.environment }}-rds)"
+          echo "  - Cognito User Pool (mechermes-${{ inputs.environment }}-userpool)"
+          echo "  - VPC, Subnets, Security Groups"
+          echo ""
+          echo "These must be managed by the infrastructure repository."
+          echo "============================================"
