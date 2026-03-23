@@ -210,8 +210,7 @@ A dependência entre camadas segue a Dependency Rule (ver [diagrama acima](#arqu
 | `RDS__Port` | Sim | Porta do RDS (auto-descoberto via GitHub Actions) |
 | `RDS__Database` | Sim | Nome do banco de dados |
 | `RDS__Username` | Sim | Usuário do banco de dados (padrão: `postgres`) |
-| `RDS__Password` | Sim | Senha do banco de dados (auto-descoberto do AWS Secrets Manager via GitHub Actions) |
-| `COGNITO_SECRET_ID` | Sim | Nome do secret no Secrets Manager (auto-descoberto via GitHub Actions) |
+| `COGNITO_SECRET_ID` | Sim | Nome do secret no Secrets Manager (fixo: `mechermes-{env}-cognito-client-secret`) |
 | `EmailSender__Enabled` | Não | Habilita/desabilita envio de e-mail (padrão: `false`) |
 | `EmailSender__SmtpServer` | Sim* | Hostname do servidor SMTP |
 | `EmailSender__SmtpPort` | Não | Porta SMTP (padrão: `25`) |
@@ -223,7 +222,11 @@ A dependência entre camadas segue a Dependency Rule (ver [diagrama acima](#arqu
 
 \* Obrigatórias quando `EmailSender__Enabled` = `true`.
 
-**Nota:** Quando o deploy é realizado via GitHub Actions, as variáveis `RDS__Host`, `RDS__Port`, `RDS__Password` e `COGNITO_SECRET_ID` são **automaticamente descobertas** da infraestrutura AWS e não precisam ser configuradas manualmente.
+**Nota:** Quando o deploy é realizado via GitHub Actions:
+
+- `RDS__Host` e `RDS__Port` são **automaticamente descobertos** da infraestrutura AWS
+- `COGNITO_SECRET_ID` é **fixo** (`mechermes-{env}-cognito-client-secret`)
+- A **senha do banco de dados** não é uma variável de ambiente - ela está no secret do Cognito
 
 #### Exemplo de Comando AWS CLI
 
@@ -250,16 +253,35 @@ aws lambda update-function-configuration \
 
 ### AWS Secrets Manager
 
-As credenciais do Cognito são armazenadas no AWS Secrets Manager sob a chave configurada em `COGNITO_SECRET_ID`:
+#### Cognito Secret (Auto-criado pelo GitHub Actions)
+
+O secret do Cognito é **automaticamente criado/atualizado** pelo GitHub Actions durante o deploy. Você **não precisa criar ou configurar nada manualmente**.
+
+**Nome do Secret:**
+
+- **HML:** `mechermes-hml-cognito-client-secret`
+- **PRD:** `mechermes-prd-cognito-client-secret`
+
+**Estrutura do Secret (criada automaticamente):**
 
 ```json
 {
-  "client_id": "514eb4opthfk48frvugeusdn5k",
-  "client_secret": "ppuui3b5h7fgc9l04q7babean43rk7ahg498e64cfn8gvsd1117",
-  "domain": "https://us-east-1jqi8exudh.auth.us-east-1.amazoncognito.com",
-  "scope": "mechermes-admin/client"
+  "client_id": "auto-discovered-from-cognito-user-pool",
+  "client_secret": "auto-discovered-from-cognito-app-client",
+  "domain": "auto-discovered-from-cognito-user-pool",
+  "scope": "mechermes/client",
+  "db_password": "auto-discovered-from-rds-master-secret"
 }
 ```
+
+**O workflow GitHub Actions descobre automaticamente:**
+
+1. **User Pool ID** - via `aws cognito-idp list-user-pools` (nome: `mechermes-{env}-userpool`)
+2. **Client ID** - via `aws cognito-idp list-user-pool-clients` (nome: `mechermes-{env}-client`)
+3. **Client Secret** - via `aws cognito-idp describe-user-pool-client`
+4. **Domain** - via `aws cognito-idp describe-user-pool`
+5. **DB Password** - do RDS Master Secret no AWS Secrets Manager
+6. Cria/atualiza o secret combinado no AWS Secrets Manager
 
 ### Permissões IAM (Execution Role)
 
@@ -363,7 +385,8 @@ Configure os seguintes secrets em **Settings → Secrets and variables → Actio
 
 O workflow irá:
 
-- Descobrir automaticamente a infraestrutura AWS (RDS, VPC, Cognito)
+- Descobrir automaticamente a infraestrutura AWS (RDS, VPC)
+- **Criar/atualizar o secret do Cognito** no AWS Secrets Manager (incluindo senha do DB)
 - Compilar e empacotar a função Lambda
 - Criar ou atualizar a função no AWS Lambda
 - Configurar variáveis de ambiente

@@ -137,6 +137,88 @@ jobs:
             echo "✓ Lambda function created"
           fi
 
+      # Create/Update Cognito Secret with DB Password
+      - name: Create/Update Cognito Secret
+        run: |
+          echo "Creating/updating Cognito secret for ${{ inputs.environment }}"
+          
+          # Discover RDS password
+          DB_ARN=$(aws rds describe-db-instances \
+            --db-instance-identifier mechermes-${{ inputs.environment }}-rds \
+            --query "DBInstances[0].MasterUserSecret.SecretArn" \
+            --output text)
+          DB_PASSWORD=$(aws secretsmanager get-secret-value \
+            --secret-id "$DB_ARN" \
+            --query SecretString \
+            --output text | jq -r '.password')
+          
+          # Discover Cognito User Pool ID
+          USER_POOL_ID=$(aws cognito-idp list-user-pools \
+            --max-results 60 \
+            --query "UserPools[?Name=='mechermes-${{ inputs.environment }}-userpool'].Id" \
+            --output text)
+          echo "User Pool ID: $USER_POOL_ID"
+          
+          # Discover Cognito App Client ID
+          CLIENT_ID=$(aws cognito-idp list-user-pool-clients \
+            --user-pool-id "$USER_POOL_ID" \
+            --query "UserPoolClients[?ClientName=='mechermes-${{ inputs.environment }}-client'].ClientId" \
+            --output text)
+          echo "Client ID: $CLIENT_ID"
+          
+          # Discover Cognito App Client Secret
+          CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client \
+            --user-pool-id "$USER_POOL_ID" \
+            --client-id "$CLIENT_ID" \
+            --query "UserPoolClient.ClientSecret" \
+            --output text)
+          echo "Client Secret discovered (hidden)"
+          
+          # Discover Cognito Domain
+          COGNITO_DOMAIN=$(aws cognito-idp describe-user-pool \
+            --user-pool-id "$USER_POOL_ID" \
+            --query "UserPool.Domain" \
+            --output text)
+          
+          # Construct full domain URL
+          if [ "$COGNITO_DOMAIN" != "None" ] && [ -n "$COGNITO_DOMAIN" ]; then
+            DOMAIN_URL="https://$COGNITO_DOMAIN.auth.${{ vars.AWS_DEFAULT_REGION }}.amazoncognito.com"
+          else
+            echo "Warning: No Cognito domain found, using User Pool ID format"
+            DOMAIN_URL="https://${{ vars.AWS_DEFAULT_REGION }}_${USER_POOL_ID}.auth.${{ vars.AWS_DEFAULT_REGION }}.amazoncognito.com"
+          fi
+          echo "Domain URL: $DOMAIN_URL"
+          
+          # Create secret JSON with Cognito credentials and DB password
+          SECRET_VALUE=$(cat <<EOF
+          {
+            "client_id": "$CLIENT_ID",
+            "client_secret": "$CLIENT_SECRET",
+            "domain": "$DOMAIN_URL",
+            "scope": "mechermes/client",
+            "db_password": "$DB_PASSWORD"
+          }
+          EOF
+          )
+          
+          SECRET_NAME="mechermes-${{ inputs.environment }}-cognito-client-secret"
+          
+          # Check if secret exists
+          if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" 2>/dev/null; then
+            echo "Secret exists, updating..."
+            aws secretsmanager update-secret \
+              --secret-id "$SECRET_NAME" \
+              --secret-string "$SECRET_VALUE"
+            echo "✓ Secret updated: $SECRET_NAME"
+          else
+            echo "Secret does not exist, creating..."
+            aws secretsmanager create-secret \
+              --name "$SECRET_NAME" \
+              --description "Cognito credentials and DB password for Lambda - ${{ inputs.environment }}" \
+              --secret-string "$SECRET_VALUE"
+            echo "✓ Secret created: $SECRET_NAME"
+          fi
+
       # Update Lambda environment variables with discovered values
       - name: Update Lambda Environment Variables
         run: |
@@ -151,25 +233,14 @@ jobs:
             --db-instance-identifier mechermes-${{ inputs.environment }}-rds \
             --query "DBInstances[0].Endpoint.Port" \
             --output text)
-          DB_ARN=$(aws rds describe-db-instances \
-            --db-instance-identifier mechermes-${{ inputs.environment }}-rds \
-            --query "DBInstances[0].MasterUserSecret.SecretArn" \
-            --output text)
-          DB_PASSWORD=$(aws secretsmanager get-secret-value \
-            --secret-id "$DB_ARN" \
-            --query SecretString \
-            --output text | jq -r '.password')
-
-          # Discover Cognito Secret ID
-          COGNITO_SECRET_ID=$(aws secretsmanager list-secrets \
-            --filters "Key=name,Values=mechermes-${{ inputs.environment }}-cognito-client-secret" \
-            --query "SecretList[0].Name" \
-            --output text)
+          
+          # Fixed Cognito Secret ID
+          COGNITO_SECRET_ID="mechermes-${{ inputs.environment }}-cognito-client-secret"
 
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
-            --environment "Variables={RDS__Host=$RDS_ENDPOINT,RDS__Port=$RDS_PORT,RDS__Database=mechermesdb,RDS__Username=postgres,RDS__Password=$DB_PASSWORD,COGNITO_SECRET_ID=$COGNITO_SECRET_ID,EmailSender__Enabled=true,EmailSender__SmtpServer=smtp.gmail.com,EmailSender__SmtpPort=465,EmailSender__SslRequired=true,EmailSender__UserName=${{ secrets.EMAIL_USERNAME }},EmailSender__Password=${{ secrets.EMAIL_PASSWORD }},EmailSender__SenderInformation__Name=Mecânica Hermes,EmailSender__SenderInformation__Address=rogeriosoftplan@gmail.com}" \
+            --environment "Variables={RDS__Host=$RDS_ENDPOINT,RDS__Port=$RDS_PORT,RDS__Database=mechermesdb,RDS__Username=postgres,COGNITO_SECRET_ID=$COGNITO_SECRET_ID,EmailSender__Enabled=true,EmailSender__SmtpServer=smtp.gmail.com,EmailSender__SmtpPort=465,EmailSender__SslRequired=true,EmailSender__UserName=${{ secrets.EMAIL_USERNAME }},EmailSender__Password=${{ secrets.EMAIL_PASSWORD }},EmailSender__SenderInformation__Name=Mecânica Hermes,EmailSender__SenderInformation__Address=rogeriosoftplan@gmail.com}" \
             --region ${{ vars.AWS_DEFAULT_REGION }}
 
           echo "✓ Environment variables updated successfully"

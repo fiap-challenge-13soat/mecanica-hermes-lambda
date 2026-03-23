@@ -6,7 +6,7 @@ using Npgsql;
 
 namespace CognitoTokenLambda.Infrastructure.Persistence;
 
-internal partial class ClienteRepository(RdsSettings rdsSettings) : IClienteRepository
+internal partial class ClienteRepository(RdsSettings rdsSettings, ISecretService secretService) : IClienteRepository
 {
     private const string Query = """
         SELECT "NomeCivil", "NomeSocial", "Email"
@@ -19,7 +19,7 @@ internal partial class ClienteRepository(RdsSettings rdsSettings) : IClienteRepo
     {
         var cpfNormalizado = NormalizarNumeros(cpf);
 
-        await using var connection = CreateConnection();
+        await using var connection = await CreateConnectionAsync();
         await connection.OpenAsync();
 
         await using var command = new NpgsqlCommand(Query, connection);
@@ -38,15 +38,17 @@ internal partial class ClienteRepository(RdsSettings rdsSettings) : IClienteRepo
         return new ClienteInfo(nome, email);
     }
 
-    private NpgsqlConnection CreateConnection()
+    private async Task<NpgsqlConnection> CreateConnectionAsync()
     {
+        var cognitoSettings = await secretService.GetCognitoSettingsAsync();
+        
         var connectionString = new NpgsqlConnectionStringBuilder
         {
             Host = rdsSettings.Host,
             Port = rdsSettings.Port,
             Database = rdsSettings.Database,
             Username = rdsSettings.Username,
-            Password = rdsSettings.Password,
+            Password = cognitoSettings.DbPassword,
             SslMode = SslMode.Require
         }.ToString();
 
