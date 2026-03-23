@@ -196,7 +196,7 @@ A dependência entre camadas segue a Dependency Rule (ver [diagrama acima](#arqu
 | **Reutilizar conexões** | `HttpClient` estático, `AmazonSecretsManagerClient` estático |
 | **Cache de secrets** | `SecretService` cacheia `CognitoSettings` em memória |
 | **DI no construtor** | `ServiceProvider` criado uma vez, reutilizado em warm starts |
-| **Segurança** | RDS IAM Auth (sem senha), Secrets Manager (sem credenciais em env vars), CPF mascarado em logs |
+| **Segurança** | Senha RDS via Secrets Manager, credenciais Cognito via Secrets Manager, CPF mascarado em logs |
 | **Timeout adequado** | 30s para acomodar cold start + cadeia de chamadas |
 | **Pacote enxuto** | Projeto único, sem dependências desnecessárias |
 
@@ -206,11 +206,12 @@ A dependência entre camadas segue a Dependency Rule (ver [diagrama acima](#arqu
 
 | Variável | Obrigatória | Descrição |
 | --- | --- | --- |
-| `RDS__Host` | Sim | Endpoint da instância RDS |
-| `RDS__Port` | Não | Porta do RDS (padrão: `5432`) |
+| `RDS__Host` | Sim | Endpoint da instância RDS (auto-descoberto via GitHub Actions) |
+| `RDS__Port` | Sim | Porta do RDS (auto-descoberto via GitHub Actions) |
 | `RDS__Database` | Sim | Nome do banco de dados |
-| `RDS__Username` | Sim | Usuário IAM do banco de dados |
-| `COGNITO_SECRET_ID` | Não | Nome do secret no Secrets Manager (padrão: `CognitoTokenLambda`) |
+| `RDS__Username` | Sim | Usuário do banco de dados (padrão: `postgres`) |
+| `RDS__Password` | Sim | Senha do banco de dados (auto-descoberto do AWS Secrets Manager via GitHub Actions) |
+| `COGNITO_SECRET_ID` | Sim | Nome do secret no Secrets Manager (auto-descoberto via GitHub Actions) |
 | `EmailSender__Enabled` | Não | Habilita/desabilita envio de e-mail (padrão: `false`) |
 | `EmailSender__SmtpServer` | Sim* | Hostname do servidor SMTP |
 | `EmailSender__SmtpPort` | Não | Porta SMTP (padrão: `25`) |
@@ -222,6 +223,8 @@ A dependência entre camadas segue a Dependency Rule (ver [diagrama acima](#arqu
 
 \* Obrigatórias quando `EmailSender__Enabled` = `true`.
 
+**Nota:** Quando o deploy é realizado via GitHub Actions, as variáveis `RDS__Host`, `RDS__Port`, `RDS__Password` e `COGNITO_SECRET_ID` são **automaticamente descobertas** da infraestrutura AWS e não precisam ser configuradas manualmente.
+
 #### Exemplo de Comando AWS CLI
 
 ```bash
@@ -230,9 +233,10 @@ aws lambda update-function-configuration \
   --environment "Variables={
       RDS__Host=my-rds-endpoint.rds.amazonaws.com,
       RDS__Port=5432,
-      RDS__Database=mecanica,
-      RDS__Username=lambda_iam_user,
-      COGNITO_SECRET_ID=CognitoTokenLambda,
+      RDS__Database=mechermesdb,
+      RDS__Username=postgres,
+      RDS__Password=my-db-password,
+      COGNITO_SECRET_ID=mechermes-prd-cognito-client-secret,
       EmailSender__Enabled=true,
       EmailSender__SmtpServer=smtp.example.com,
       EmailSender__SmtpPort=587,
@@ -267,19 +271,14 @@ A Lambda execution role precisa das seguintes permissões:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": "rds-db:connect",
-      "Resource": "arn:aws:rds-db:<region>:<account-id>:dbuser:<db-resource-id>/<db-username>"
-    },
-    {
-      "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
-      "Resource": "arn:aws:secretsmanager:<region>:<account-id>:secret:CognitoTokenLambda-*"
+      "Resource": "arn:aws:secretsmanager:<region>:<account-id>:secret:mechermes-*-cognito-client-secret-*"
     }
   ]
 }
 ```
 
-A instância RDS deve ter **IAM Database Authentication** habilitado.
+**Nota:** A Lambda utiliza autenticação por senha (não IAM Database Authentication). A senha do banco de dados é injetada automaticamente via GitHub Actions a partir do AWS Secrets Manager.
 
 ## Request / Response
 

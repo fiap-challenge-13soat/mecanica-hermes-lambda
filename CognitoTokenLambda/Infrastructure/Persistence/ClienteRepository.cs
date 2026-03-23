@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Amazon.RDS.Util;
 using CognitoTokenLambda.Configuration;
 using CognitoTokenLambda.Interfaces;
 using CognitoTokenLambda.Models;
@@ -41,18 +40,13 @@ internal partial class ClienteRepository(RdsSettings rdsSettings) : IClienteRepo
 
     private NpgsqlConnection CreateConnection()
     {
-        var authToken = RDSAuthTokenGenerator.GenerateAuthToken(
-            rdsSettings.Host,
-            rdsSettings.Port,
-            rdsSettings.Username);
-
         var connectionString = new NpgsqlConnectionStringBuilder
         {
             Host = rdsSettings.Host,
             Port = rdsSettings.Port,
             Database = rdsSettings.Database,
             Username = rdsSettings.Username,
-            Password = authToken,
+            Password = rdsSettings.Password,
             SslMode = SslMode.Require
         }.ToString();
 
