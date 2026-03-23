@@ -10,10 +10,6 @@ on:
         options:
           - hml
           - prd
-      confirm_destroy:
-        description: "Type 'DESTROY' to confirm deletion"
-        required: true
-        type: string
 
 permissions:
   contents: read
