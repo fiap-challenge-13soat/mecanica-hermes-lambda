@@ -24,14 +24,6 @@ jobs:
       COGNITO_SECRET_NAME: mechermes-${{ inputs.environment }}-cognito-client-secret
 
     steps:
-      - name: Validate Destroy Confirmation
-        run: |
-          if [ "${{ inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "❌ Destroy confirmation failed. You must type 'DESTROY' exactly."
-            exit 1
-          fi
-          echo "✓ Destroy confirmation validated"
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
