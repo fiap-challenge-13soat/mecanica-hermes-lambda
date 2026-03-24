@@ -2,6 +2,8 @@
 
 AWS Lambda function responsável por autenticar clientes cadastrados na **Mecânica Hermes**, gerando um token JWT via **AWS Cognito** e enviando-o por e-mail ao cliente.
 
+> Para documentação técnica detalhada (arquitetura, RFCs e ADRs), consulte a pasta [`docs/`](./docs/).
+
 ## Visão Geral
 
 A função recebe o **CPF** de um cliente, consulta o banco de dados PostgreSQL (Amazon RDS) para validar o cadastro, obtém um token JWT do AWS Cognito e envia o token ao e-mail registrado do cliente via SMTP.
@@ -71,7 +73,7 @@ CognitoTokenLambda/
 │  └─ GenerateClienteTokenUseCase.cs      # Caso de uso principal
 └─ Infrastructure/                        # Adapters — implementações concretas
    ├─ Persistence/
-   │  └─ ClienteRepository.cs             # Npgsql + RDS IAM Authentication
+   │  └─ ClienteRepository.cs             # Npgsql + senha via secret consolidado
    ├─ Cognito/
    │  └─ CognitoTokenService.cs           # HttpClient POST /oauth2/token
    ├─ Email/
@@ -143,8 +145,8 @@ O `GenerateClienteTokenUseCase` executa três passos:
 #### Persistence — `ClienteRepository`
 
 - **Npgsql direto** (sem EF Core) — reduz o tamanho do pacote e o cold start.
-- **RDS IAM Database Authentication** — gera token temporário via `RDSAuthTokenGenerator` usando as credenciais da IAM Role da Lambda. Sem senha de banco em variáveis de ambiente.
-- **SSL obrigatório** (`SslMode.Require`) — exigido pelo RDS IAM Auth.
+- **Autenticação por senha** — usa `db_password` obtido do AWS Secrets Manager (secret consolidado com credenciais do Cognito).
+- **SSL obrigatório** (`SslMode.Require`) para conexão segura com o RDS.
 - **Source-generated Regex** (`[GeneratedRegex]`) para normalização do CPF — compilado em build time para melhor performance.
 
 #### Cognito — `CognitoTokenService`
@@ -232,13 +234,12 @@ A dependência entre camadas segue a Dependency Rule (ver [diagrama acima](#arqu
 
 ```bash
 aws lambda update-function-configuration \
-  --function-name CognitoTokenLambda \
+  --function-name mechermes-prd-cognito-token-lambda \
   --environment "Variables={
       RDS__Host=my-rds-endpoint.rds.amazonaws.com,
       RDS__Port=5432,
       RDS__Database=mechermesdb,
       RDS__Username=postgres,
-      RDS__Password=my-db-password,
       COGNITO_SECRET_ID=mechermes-prd-cognito-client-secret,
       EmailSender__Enabled=true,
       EmailSender__SmtpServer=smtp.example.com,
@@ -342,11 +343,11 @@ A Lambda execution role precisa das seguintes permissões:
 | --- | --- | --- |
 | .NET | 10.0 | Runtime |
 | Amazon.Lambda.Core | 2.8.1 | Lambda SDK |
-| AWSSDK.RDS | 4.0.18 | RDS IAM Auth Token Generator |
+| AWSSDK.RDS | 4.0.10.2 | Dependências AWS para integração com RDS |
 | AWSSDK.SecretsManager | 4.0.4.8 | Acesso ao Secrets Manager |
-| Npgsql | 10.0.1 | Driver PostgreSQL |
-| MailKit | 4.15.1 | Cliente SMTP |
-| Microsoft.Extensions.DependencyInjection | 10.0.4 | Container DI |
+| Npgsql | 9.0.3 | Driver PostgreSQL |
+| MailKit | 4.15.0 | Cliente SMTP |
+| Microsoft.Extensions.DependencyInjection | 10.0.0 | Container DI |
 
 ## Deploy
 
@@ -358,22 +359,18 @@ O projeto possui um workflow automatizado em `.github/workflows/deploy.yml` que 
 
 Configure as seguintes variáveis em **Settings → Secrets and variables → Actions → Variables**:
 
-| Variável | Descrição | Exemplo |
-|----------|-----------|---------|
-| `AWS_DEFAULT_REGION` | Região AWS | `us-east-1` |
-| `LAMBDA_EXECUTION_ROLE_ARN` | ARN da IAM Role para execução da Lambda | `arn:aws:iam::${aws_account_id}:role/LabRole` |
+- `AWS_DEFAULT_REGION`: região AWS (exemplo: `us-east-1`).
+- `LAMBDA_EXECUTION_ROLE_ARN`: ARN da IAM Role usada pela Lambda (exemplo: `arn:aws:iam::${aws_account_id}:role/LabRole`).
 
 #### Secrets de Repositório Necessários
 
 Configure os seguintes secrets em **Settings → Secrets and variables → Actions → Secrets**:
 
-| Secret | Descrição |
-|--------|-----------|
-| `AWS_ACCESS_KEY_ID` | AWS Access Key ID |
-| `AWS_SECRET_ACCESS_KEY` | AWS Secret Access Key |
-| `AWS_SESSION_TOKEN` | AWS Session Token (se usando credenciais temporárias) |
-| `EMAIL_USERNAME` | Usuário SMTP |
-| `EMAIL_PASSWORD` | Senha SMTP |
+- `AWS_ACCESS_KEY_ID`: AWS Access Key ID.
+- `AWS_SECRET_ACCESS_KEY`: AWS Secret Access Key.
+- `AWS_SESSION_TOKEN`: AWS Session Token (quando usar credenciais temporárias).
+- `EMAIL_USERNAME`: usuário SMTP.
+- `EMAIL_PASSWORD`: senha SMTP.
 
 #### Execução do Workflow
 
@@ -439,3 +436,11 @@ dotnet lambda deploy-function mechermes-{env}-cognito-token-lambda \
 | `function-memory-size` | `512` | Melhor cold start para .NET (mais memória = mais CPU) |
 | `function-timeout` | `30` | Acomoda cold start + DB + Cognito + Email |
 | `function-architecture` | `x86_64` | Compatibilidade padrão |
+
+---
+
+## Documentação rica
+
+- [Arquitetura da função](./docs/Arquitetura.md)
+- [RFCs](./docs/RFCs.md)
+- [ADRs](./docs/ADRs.md)
