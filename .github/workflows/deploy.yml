@@ -274,6 +274,44 @@ jobs:
             --region ${{ vars.AWS_DEFAULT_REGION }}
           echo "✓ VPC configuration applied successfully"
 
+      # Configure API Gateway Permissions
+      - name: Configure API Gateway Permissions
+        run: |
+          echo "Configuring API Gateway permissions for Lambda invocation..."
+          
+          # Discover API Gateway ID for the environment
+          API_GATEWAY_ID=$(aws apigatewayv2 get-apis \
+            --query "Items[?Name=='mechermes-${{ inputs.environment }}-api'].ApiId" \
+            --output text)
+          
+          if [ -z "$API_GATEWAY_ID" ] || [ "$API_GATEWAY_ID" == "None" ]; then
+            echo "⚠️  Warning: API Gateway not found for environment ${{ inputs.environment }}"
+            echo "Skipping permission configuration. Run API Gateway deployment first."
+          else
+            echo "✓ API Gateway ID: $API_GATEWAY_ID"
+            
+            # Remove existing permission if it exists (to avoid conflicts)
+            echo "Removing existing API Gateway permission (if any)..."
+            aws lambda remove-permission \
+              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              --statement-id "AllowExecutionFromAPIGateway-${{ inputs.environment }}" \
+              --region ${{ vars.AWS_DEFAULT_REGION }} 2>/dev/null || echo "No existing permission to remove"
+            
+            # Add permission for API Gateway to invoke Lambda
+            echo "Adding API Gateway invoke permission..."
+            aws lambda add-permission \
+              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              --statement-id "AllowExecutionFromAPIGateway-${{ inputs.environment }}" \
+              --action lambda:InvokeFunction \
+              --principal apigateway.amazonaws.com \
+              --source-arn "arn:aws:execute-api:${{ vars.AWS_DEFAULT_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:${API_GATEWAY_ID}/*/*/auth/generate-token" \
+              --region ${{ vars.AWS_DEFAULT_REGION }}
+            
+            echo "✓ API Gateway permission configured successfully"
+            echo "  - API Gateway ID: $API_GATEWAY_ID"
+            echo "  - Route: POST /auth/generate-token"
+          fi
+
       # Verify deployment
       - name: Verify Deployment
         run: |
@@ -297,3 +335,12 @@ jobs:
           echo ""
           echo "✓ Lambda function deployed and verified successfully"
           echo "Function ARN: $(echo "$FUNCTION_INFO" | jq -r '.Configuration.FunctionArn')"
+          
+          # Display Lambda permissions
+          echo ""
+          echo "Lambda Permissions:"
+          aws lambda get-policy \
+            --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+            --region ${{ vars.AWS_DEFAULT_REGION }} \
+            --query 'Policy' \
+            --output text | jq -r '.Statement[] | "  - \(.Sid): \(.Principal.Service) can invoke from \(.Condition.ArnLike."AWS:SourceArn")"' || echo "  No permissions configured"
