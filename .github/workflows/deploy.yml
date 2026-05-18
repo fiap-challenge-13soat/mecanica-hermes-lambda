@@ -287,6 +287,21 @@ jobs:
           if [ -z "$API_GATEWAY_ID" ] || [ "$API_GATEWAY_ID" == "None" ]; then
             echo "⚠️  Warning: API Gateway not found for environment ${{ inputs.environment }}"
             echo "Skipping permission configuration. Run API Gateway deployment first."
+
+            # Add permission for API Gateway to invoke Lambda
+            echo "Adding API Gateway invoke permission..."
+            aws lambda add-permission \
+              --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
+              --statement-id "AllowExecutionFromAPIGateway-${{ inputs.environment }}" \
+              --action lambda:InvokeFunction \
+              --principal apigateway.amazonaws.com \
+              --source-arn "arn:aws:execute-api:${{ vars.AWS_DEFAULT_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:*/*/*/auth/generate-token" \
+              --region ${{ vars.AWS_DEFAULT_REGION }}
+            
+            echo "✓ API Gateway permission configured successfully"
+            echo "  - API Gateway ID: $API_GATEWAY_ID"
+            echo "  - Route: POST /auth/generate-token"
+
           else
             echo "✓ API Gateway ID: $API_GATEWAY_ID"
             
