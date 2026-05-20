@@ -240,7 +240,7 @@ jobs:
           # Update Lambda environment variables
           aws lambda update-function-configuration \
             --function-name ${{ env.LAMBDA_FUNCTION_NAME }} \
-            --environment "Variables={RDS__Host=$RDS_ENDPOINT,RDS__Port=$RDS_PORT,RDS__Database=mechermesdb,RDS__Username=postgres,COGNITO_SECRET_ID=$COGNITO_SECRET_ID,EmailSender__Enabled=true,EmailSender__SmtpServer=smtp.gmail.com,EmailSender__SmtpPort=465,EmailSender__SslRequired=true,EmailSender__UserName=${{ secrets.EMAIL_USERNAME }},EmailSender__Password=${{ secrets.EMAIL_PASSWORD }},EmailSender__SenderInformation__Name=Mecânica Hermes,EmailSender__SenderInformation__Address=rogeriosoftplan@gmail.com}" \
+            --environment "Variables={RDS__Host=$RDS_ENDPOINT,RDS__Port=$RDS_PORT,RDS__Database=cadastrosdb,RDS__Username=postgres,COGNITO_SECRET_ID=$COGNITO_SECRET_ID,EmailSender__Enabled=true,EmailSender__SmtpServer=smtp.gmail.com,EmailSender__SmtpPort=465,EmailSender__SslRequired=true,EmailSender__UserName=${{ secrets.EMAIL_USERNAME }},EmailSender__Password=${{ secrets.EMAIL_PASSWORD }},EmailSender__SenderInformation__Name=Mecânica Hermes,EmailSender__SenderInformation__Address=rogeriosoftplan@gmail.com}" \
             --region ${{ vars.AWS_DEFAULT_REGION }}
 
           echo "✓ Environment variables updated successfully"

@@ -238,7 +238,7 @@ aws lambda update-function-configuration \
   --environment "Variables={
       RDS__Host=my-rds-endpoint.rds.amazonaws.com,
       RDS__Port=5432,
-      RDS__Database=mechermesdb,
+      RDS__Database=cadastrosdb,
       RDS__Username=postgres,
       COGNITO_SECRET_ID=mechermes-prd-cognito-client-secret,
       EmailSender__Enabled=true,
